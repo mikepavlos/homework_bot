@@ -1,7 +1,3 @@
-class ResponseKeyError(Exception):
-    """Отсутствует необходимый ключ в ответе."""
-
-
 class ResponseHTTPError(Exception):
     """Ошибка доступности эндпоинта."""
 

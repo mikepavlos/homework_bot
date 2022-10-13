@@ -1,3 +1,4 @@
+from http import HTTPStatus
 import logging
 import os
 import sys
@@ -62,8 +63,11 @@ def get_api_answer(current_timestamp):
 
     try:
         response = requests.get(ENDPOINT, headers=HEADERS, params=params)
-        response.raise_for_status()
-        return response.json()
+        if response.status_code == HTTPStatus.OK:
+            return response.json()
+        raise exceptions.RequestError(
+            f'Эндпоинт {ENDPOINT} недоступен. '
+            f'Код ошибки ответа API: {response.status_code}')
 
     except requests.ConnectionError:
         raise exceptions.ConnectError('Отсутствует подключение.')
@@ -80,12 +84,16 @@ def get_api_answer(current_timestamp):
 def check_response(response):
     """Проверка ответа API на корректность."""
     if not isinstance(response, dict):
-        err = 'Ответ API не соответствует ожидаемому типу <dict>.'
+        err = 'Ответ API не соответствует ожидаемому типу <dict>'
         raise TypeError(err)
 
     if response.get('homeworks') is None:
-        err = 'В ответе API отсутствует ключ <homeworks>.'
-        raise exceptions.ResponseKeyError(err)
+        err = 'В ответе API отсутствует ключ <homeworks>'
+        raise KeyError(err)
+
+    if not isinstance(response['homeworks'], list):
+        err = 'Под ключом <homeworks> должен быть список <list>'
+        raise TypeError(err)
 
     return response.get('homeworks')
 
@@ -93,11 +101,18 @@ def check_response(response):
 def parse_status(homework):
     """Извлечение и проверка статуса домашней работы."""
     homework_name = homework.get('homework_name')
+    if homework_name is None:
+        raise KeyError('В домашке отсутствует ключ homework_name')
+
     homework_status = homework.get('status')
+    if homework_status is None:
+        raise KeyError('В домашке отсутствует ключ status')
+
     if homework_status not in HOMEWORK_STATUSES:
         raise exceptions.StatusError(
             f'Недокументированный статус "{homework_status}"'
         )
+
     verdict = HOMEWORK_STATUSES[homework_status]
     return f'Изменился статус проверки работы "{homework_name}". {verdict}'
 
@@ -135,14 +150,14 @@ def main():
             if homeworks:
                 message = parse_status(homeworks[0])
             else:
-                message = 'На данный момент домашек нет.'
-                logger.info(response)
+                message = 'На данный момент домашних работ нет'
+                logger.info(message)
 
             if message != last_status:
                 send_message(bot, message)
                 last_status = message
             else:
-                logger.debug('Новые статусы в ответе отсутствуют.')
+                logger.debug('Новые статусы в ответе отсутствуют')
 
             current_timestamp = int(time.time())
 
