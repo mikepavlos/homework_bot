@@ -104,12 +104,11 @@ def parse_status(homework):
 
 def check_tokens():
     """Проверка токенов."""
-    tokens_exists = True
     for name, token in TOKEN_VALUES.items():
         if token is None:
-            tokens_exists = False
             logging.critical(f'Отсутствует переменная окружения {name}')
-    return tokens_exists
+            return False
+    return True
 
 
 def main():
