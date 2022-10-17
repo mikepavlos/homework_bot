@@ -1,5 +1,6 @@
 from http import HTTPStatus
 import logging
+from logging.handlers import RotatingFileHandler
 import os
 import sys
 import time
@@ -16,8 +17,13 @@ PRACTICUM_TOKEN = os.getenv('PRACTICUM_TOKEN')
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
+TOKENS_VALUES = {
+    'PRACTICUM_TOKEN': PRACTICUM_TOKEN,
+    'TELEGRAM_TOKEN': TELEGRAM_TOKEN,
+    'TELEGRAM_CHAT_ID': TELEGRAM_CHAT_ID,
+}
+
 RETRY_TIME = 600
-SEK_IN_MONTH = 2629743
 ENDPOINT = 'https://practicum.yandex.ru/api/user_api/homework_statuses/'
 HEADERS = {'Authorization': f'OAuth {PRACTICUM_TOKEN}'}
 
@@ -34,8 +40,12 @@ def send_message(bot, message):
         bot.send_message(TELEGRAM_CHAT_ID, message)
         logging.info(f'Сообщение отправлено в Telegram: {message}')
 
-    except telegram.error.Unauthorized as err:
-        raise exceptions.SendMessageFailure(f'Бот не отвечает: {err}')
+    except Exception as err:
+        raise exceptions.SendMessageFailure(
+            f'Сообщение не отправлено. '
+            f'Ошибка обращения к API Telegram. {err}, '
+            f'id чата: {TELEGRAM_CHAT_ID}'
+        )
 
 
 def get_api_answer(current_timestamp):
@@ -45,39 +55,36 @@ def get_api_answer(current_timestamp):
 
     try:
         response = requests.get(ENDPOINT, headers=HEADERS, params=params)
-        if response.status_code == HTTPStatus.OK:
-            return response.json()
+
+    except requests.RequestException as err:
+        raise exceptions.RequestError(
+            f'Ошибка запроса API: {err}, '
+            f'Эндпоинт {ENDPOINT}, '
+            f'headers: {HEADERS}, '
+            f'params: {params}.'
+        ) from err
+
+    if response.status_code != HTTPStatus.OK:
         raise exceptions.RequestError(
             f'Эндпоинт {ENDPOINT} недоступен. '
+            f'headers: {HEADERS}, params: {params}. '
             f'Код ошибки ответа API: {response.status_code}'
         )
 
-    except requests.ConnectionError as err:
-        raise exceptions.ConnectError('Отсутствует подключение') from err
-
-    except requests.exceptions.HTTPError as err:
-        raise exceptions.ResponseHTTPError(
-            f'Эндпоинт {ENDPOINT} недоступен. '
-            f'Код ошибки ответа API: {err.response.status_code}')
-
-    except requests.exceptions.RequestException as err:
-        raise exceptions.RequestError(f'Ошибка ответа API: {err}')
+    return response.json()
 
 
 def check_response(response):
     """Проверка ответа API на корректность."""
     if not isinstance(response, dict):
-        err = 'Ответ API не соответствует ожидаемому типу <dict>'
-        raise TypeError(err)
+        raise TypeError('Ответ API не соответствует ожидаемому типу <dict>')
 
     homeworks = response.get('homeworks')
     if homeworks is None:
-        err = 'В ответе API отсутствует ключ <homeworks>'
-        raise KeyError(err)
+        raise KeyError('В ответе API отсутствует ключ <homeworks>')
 
     if not isinstance(homeworks, list):
-        err = 'Под ключом <homeworks> должен быть список <list>'
-        raise TypeError(err)
+        raise TypeError('Под ключом <homeworks> должен быть список <list>')
 
     return homeworks
 
@@ -88,9 +95,7 @@ def parse_status(homework):
     homework_status = homework['status']
 
     if homework_status not in HOMEWORK_VERDICTS:
-        raise exceptions.StatusError(
-            f'Недокументированный статус "{homework_status}"'
-        )
+        raise ValueError(f'Недокументированный статус "{homework_status}"')
 
     verdict = HOMEWORK_VERDICTS[homework_status]
     return f'Изменился статус проверки работы "{homework_name}". {verdict}'
@@ -98,27 +103,23 @@ def parse_status(homework):
 
 def check_tokens():
     """Проверка токенов."""
-    tokens = True
-    if PRACTICUM_TOKEN is None:
-        logging.critical('Отсутствует переменная окружения PRACTICUM_TOKEN')
-        tokens = False
-    if TELEGRAM_TOKEN is None:
-        logging.critical('Отсутствует переменная окружения TELEGRAM_TOKEN')
-        tokens = False
-    if TELEGRAM_CHAT_ID is None:
-        logging.critical('Отсутствует переменная окружения TELEGRAM_CHAT_ID')
-        tokens = False
-    return tokens
+    if all([TELEGRAM_TOKEN, PRACTICUM_TOKEN, TELEGRAM_CHAT_ID]):
+        return True
+
+    for name, token in TOKENS_VALUES.items():
+        if token is None:
+            logging.critical(
+                f'Отсутствует переменная окружения {name}')
+    return False
 
 
 def main():
     """Основная логика работы бота."""
     if not check_tokens():
-        sys.exit('Программа принудительно остановлена')
+        raise SystemExit('Программа принудительно остановлена')
 
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
-    current_timestamp = int(time.time()) - SEK_IN_MONTH
-    last_status = None
+    current_timestamp = int(time.time())
     last_error = None
 
     while True:
@@ -127,17 +128,11 @@ def main():
             homeworks = check_response(response)
             if homeworks:
                 message = parse_status(homeworks[0])
-            else:
-                message = 'На данный момент домашних работ нет'
-                logging.info(message)
-
-            if message != last_status:
                 send_message(bot, message)
-                last_status = message
             else:
-                logging.debug('Новые статусы в ответе отсутствуют')
+                logging.debug('Изменений статусов работ нет')
 
-            current_timestamp = response['current_date'] - SEK_IN_MONTH
+            current_timestamp = response['current_date']
 
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
@@ -161,13 +156,15 @@ if __name__ == '__main__':
                '%(message)s',
         handlers=[
             logging.StreamHandler(sys.stdout),
-            logging.FileHandler(
+            RotatingFileHandler(
                 filename=os.path.join(
                     os.path.dirname(__file__),
                     'program.log'
                 ),
                 mode='w',
-                encoding='utf-8'
+                maxBytes=5000000,
+                backupCount=5,
+                encoding='utf-8',
             )
         ]
     )

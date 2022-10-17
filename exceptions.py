@@ -1,18 +1,8 @@
-class ResponseHTTPError(Exception):
-    """Ошибка доступности эндпоинта."""
-
-
-class ConnectError(Exception):
-    """Ошибка соединения."""
-
-
 class RequestError(Exception):
     """Прочие ошибки запроса."""
-
-
-class StatusError(Exception):
-    """Недокументированный статус в ответе API."""
+    pass
 
 
 class SendMessageFailure(Exception):
     """Сбой отправки сообщения в Telegram."""
+    pass
