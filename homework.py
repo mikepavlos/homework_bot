@@ -17,11 +17,7 @@ PRACTICUM_TOKEN = os.getenv('PRACTICUM_TOKEN')
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
-TOKENS_VALUES = {
-    'PRACTICUM_TOKEN': PRACTICUM_TOKEN,
-    'TELEGRAM_TOKEN': TELEGRAM_TOKEN,
-    'TELEGRAM_CHAT_ID': TELEGRAM_CHAT_ID,
-}
+TOKEN_NAMES = ('PRACTICUM_TOKEN', 'TELEGRAM_TOKEN', 'TELEGRAM_CHAT_ID')
 
 RETRY_TIME = 600
 ENDPOINT = 'https://practicum.yandex.ru/api/user_api/homework_statuses/'
@@ -103,14 +99,19 @@ def parse_status(homework):
 
 def check_tokens():
     """Проверка токенов."""
-    if all([TELEGRAM_TOKEN, PRACTICUM_TOKEN, TELEGRAM_CHAT_ID]):
-        return True
+    token_exists = True
 
-    for name, token in TOKENS_VALUES.items():
+    for index, token in enumerate((
+        PRACTICUM_TOKEN,
+        TELEGRAM_TOKEN,
+        TELEGRAM_CHAT_ID
+    )):
         if token is None:
+            token_exists = False
             logging.critical(
-                f'Отсутствует переменная окружения {name}')
-    return False
+                f'Отсутствует переменная окружения {TOKEN_NAMES[index]}')
+
+    return token_exists
 
 
 def main():
@@ -119,7 +120,7 @@ def main():
         raise SystemExit('Программа принудительно остановлена')
 
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
-    current_timestamp = int(time.time())
+    current_timestamp = 1
     last_error = None
 
     while True:
