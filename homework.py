@@ -101,15 +101,11 @@ def check_tokens():
     """Проверка токенов."""
     token_exists = True
 
-    for index, token in enumerate((
-        PRACTICUM_TOKEN,
-        TELEGRAM_TOKEN,
-        TELEGRAM_CHAT_ID
-    )):
-        if token is None:
+    for token in TOKEN_NAMES:
+        if not globals().get(token):
             token_exists = False
             logging.critical(
-                f'Отсутствует переменная окружения {TOKEN_NAMES[index]}')
+                f'Отсутствует переменная окружения {token}')
 
     return token_exists
 
@@ -133,7 +129,7 @@ def main():
             else:
                 logging.debug('Изменений статусов работ нет')
 
-            current_timestamp = response['current_date']
+            current_timestamp = response.get('current_date', current_timestamp)
 
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
