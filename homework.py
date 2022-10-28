@@ -116,7 +116,7 @@ def main():
         raise SystemExit('Программа принудительно остановлена')
 
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
-    current_timestamp = 1
+    current_timestamp = int(time.time())
     last_error = None
 
     while True:
@@ -129,7 +129,7 @@ def main():
             else:
                 logging.debug('Изменений статусов работ нет')
 
-            current_timestamp = response.get('current_date', current_timestamp)
+            current_timestamp = response.get('current_date', int(time.time()))
 
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
