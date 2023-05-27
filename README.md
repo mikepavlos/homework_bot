@@ -67,4 +67,5 @@ python homework.py
 
 #### Автор: 
 mikepavlos (Михаил Павлов)  
+email mike_pavlovsky@hotmail.com  
 telegram @miha1is
